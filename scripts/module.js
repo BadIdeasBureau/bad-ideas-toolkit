@@ -1,18 +1,20 @@
 Hooks.once('init', async function() {
     game.socket.on(`module.bad-ideas-toolkit`, (data) => {
         if(data.operation = "response"){
-            const resolve = _requestResolvers[data.requestId];
+            const resolve = _requestResolvers[data.randomID];
             if (resolve){
-                delete _requestResolvers[data.requestId];
+                delete _requestResolvers[data.randomID];
                 resolve(data.retVal)
             }
         } else {
-            handlers[data.operation+"handler"](data);
+            handlers[`${functionName}handler`](data);
         }
     });
     game.modules.get("bad-ideas-toolkit").api = api
     if(!globalThis.badIdeas) {globalThis.badIdeas = api} //register convenience object if it's not already in use
 });
+
+const _requestResolvers = {};
 
 const api = {
     isMainGM(){
@@ -112,7 +114,7 @@ async function handlerBridge(content, functionName){  //if the user is the main 
         const randomID = getUniqueID();
         _requestResolvers[randomID] = resolve;
         if (api.isMainGM()){
-            handlers[functionName+"handler"]({content, randomID})
+            handlers[`${functionName}Handler`]({content, randomID, user: game.user.id})
         }else{ 
             game.socket.emit('module.bad-ideas-toolkit', {
                 operation: functionName,
@@ -135,9 +137,9 @@ async function handlerBridge(content, functionName){  //if the user is the main 
 
 function returnBridge(retVal, data){
     if (data.user === game.user.id){
-        const resolve = _requestResolvers[data.requestId];
+        const resolve = _requestResolvers[data.randomID];
             if (resolve){
-                delete _requestResolvers[data.requestId];
+                delete _requestResolvers[data.randomID];
                 resolve(retVal)
             }
     }
