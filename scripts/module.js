@@ -1,6 +1,14 @@
 Hooks.once('init', async function() {
     game.socket.on(`module.bad-ideas-toolkit`, (data) => {
-        handlers[data.operation+"handler"](data);
+        if(data.operation = "response"){
+            const resolve = _requestResolvers[data.requestId];
+            if (resolve){
+                delete _requestResolvers[data.requestId];
+                resolve(data.retVal)
+            }
+        } else {
+            handlers[data.operation+"handler"](data);
+        }
     });
     game.modules.get("bad-ideas-toolkit").api = api
     if(!globalThis.badIdeas) {globalThis.badIdeas = api} //register convenience object if it's not already in use
@@ -11,36 +19,36 @@ const api = {
         return game.user === game.users.find((u) => u.isGM && u.active)
     },
 
-    applyCUBCondition(condition,entity) {
+    async applyCUBCondition(condition,entity) {
         if(!game.modules.get("combat-utility-belt")?.active) return false;
-        const data = {condition, uuid: entity.uuid};
-        handlerBridge(data, "applyCUBCondition")
+        const content = {condition, uuid: entity.uuid};
+        return handlerBridge(content, "applyCUBCondition")
     },
 
-    removeCUBCondition(condition,entity){
+    async removeCUBCondition(condition,entity){
         if(!game.modules.get("combat-utility-belt")?.active) return false;
-        const data = {condition, uuid: entity.uuid};
-        handlerBridge(data, "removeCUBCondition")
+        const content = {condition, uuid: entity.uuid};
+        return handlerBridge(content, "removeCUBCondition")
     },
 
-    entityGetFlag(entity, scope, flag){
-        const data = {uuid: entity.uuid, scope,flag};
-        handlerBridge(data,"entityGetFlag")
+    async entityGetFlag(entity, scope, flag){
+        const content = {uuid: entity.uuid, scope,flag};
+        return handlerBridge(content,"entityGetFlag")
     },
 
-    entitySetFlag(entity, scope, flag, value){
-        const data = {uuid: entity.uuid, scope,flag, value};
-        handlerBridge(data,"entitySetFlag")
+    async entitySetFlag(entity, scope, flag, value){
+        const content = {uuid: entity.uuid, scope,flag, value};
+        return handlerBridge(content,"entitySetFlag")
     },
 
-    entityUpdate(entity, newData, options){
-        const data = {uuid: entity.uuid, newData, options};
-        handlerBridge(data,"entityUpdate")
+    async entityUpdate(entity, newData, options){
+        const content = {uuid: entity.uuid, newData, options};
+        return handlerBridge(content,"entityUpdate")
     },
 
-    entityDelete(entity, options){
-        const data = {uuid: entity.uuid, options};
-        handlerBridge(data,"entityDelete")
+    async entityDelete(entity, options){
+        const content = {uuid: entity.uuid, options};
+        return handlerBridge(content,"entityDelete")
     },
 
     async entityFromUuid(uuid){ //allows recovery of the actual Entity instance from a uuid, even for embedded entities.
@@ -95,55 +103,96 @@ const api = {
     }
 }
 
-function handlerBridge(data, functionName){  //if the user is the main GM, executes the handler directly.  otherwise, emits an instruction to execute over a socket.
-    if (api.isMainGM())
-        {handlers[functionName+"handler"](data)}
-    else{ 
-        game.socket.emit('module.bad-ideas-toolkit', {
-            operation: functionName,
-            user: game.user.id,
-            content: data
-        })
-    };
+function getUniqueID(){
+    return `${game.user.id}-${Date.now()}-${randomID()}`
+}
+
+async function handlerBridge(content, functionName){  //if the user is the main GM, executes the handler directly.  otherwise, emits an instruction to execute over a socket.
+    const methodResponse = await new Promise((resolve, reject) => {
+        const randomID = getUniqueID();
+        _requestResolvers[randomID] = resolve;
+        if (api.isMainGM()){
+            handlers[functionName+"handler"]({content, randomID})
+        }else{ 
+            game.socket.emit('module.bad-ideas-toolkit', {
+                operation: functionName,
+                user: game.user.id,
+                content,
+                randomID
+            })
+        };
+        setTimeout(() =>{
+            delete _requestResolvers[randomID];
+            reject(new Error ("timed out waiting for GM execution"));
+        }, 5000)
+    })
+
+    if (methodResponse.error)
+        throw new Error(methodResponse.error)
+    else
+        return methodResponse.result;
+}
+
+function returnBridge(retVal, data){
+    if (data.user === game.user.id){
+        const resolve = _requestResolvers[data.requestId];
+            if (resolve){
+                delete _requestResolvers[data.requestId];
+                resolve(retVal)
+            }
+    }
+    game.socket.emit("module.bad-ideas-toolkit", {
+        operation: "return",
+        user: game.user.id,
+        retVal,
+        randomID: data.randomID
+    })
 }
 
 const handlers = {
-    applyCUBConditionHandler(data){
+    async applyCUBConditionHandler(data){
         if(!api.isMainGM()) return;
-        let condition = data.condition;
-        let entity = await api.entityFromUuid(data.uuid);
-        game.cub.addCondition(condition, entity)
+        const condition = data.content.condition;
+        const entity = await api.entityFromUuid(data.content.uuid);
+        const retVal = {}
+        retVal.result = await game.cub.addCondition(condition, entity)
+        
     },
 
-    removeCUBConditionHandler(data){
+    async removeCUBConditionHandler(data){
         if(!api.isMainGM()) return;
-        let condition = data.condition;
-        let entity = await api.entityFromUuid(data.uuid);
-        game.cub.removeCondition(condition, entity)
+        const condition = data.content.condition;
+        const entity = await api.entityFromUuid(data.content.uuid);
+        const retVal = {}
+        retVal.result = await game.cub.removeCondition(condition, entity)
     },
 
     async entityGetFlagHandler(data){
         if(!api.isMainGM()) return;
-        let entity = await api.entityFromUuid(data.uuid);
-        entity.getFlag(data.scope, data.flag)
+        const entity = await api.entityFromUuid(data.content.uuid);
+        const retVal = {}
+        retVal.result = await entity.getFlag(data.content.scope, data.content.flag)
     },
 
     async entitySetFlagHandler(data){
         if(!api.isMainGM()) return;
-        let entity = await api.entityFromUuid(data.uuid);
-        entity.setFlag(data.scope, data.flag, data.value)
+        const entity = await api.entityFromUuid(data.content.uuid);
+        const retVal = {}
+        retVal.result = await entity.setFlag(data.content.scope, data.content.flag, data.content.value)
     },
 
     async entityUpdateHandler(data){
         if(!api.isMainGM()) return;
-        let entity = await api.entityFromUuid(data.uuid);
-        entity.update(data.newData, data.options)
+        const entity = await api.entityFromUuid(data.content.uuid);
+        const retVal = {}
+        retVal.result = await entity.update(data.content.newData, data.content.options)
     },
 
     async entityDeleteHandler(data){
         if(!api.isMainGM()) return;
-        let entity = await api.entityFromUuid(data.uuid);
-        entity.delete(data.options)
+        const entity = await api.entityFromUuid(data.content.uuid);
+        const retVal = {}
+        retVal.result = await entity.delete(data.content.options)
     }
 
 }

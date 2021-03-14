@@ -30,7 +30,7 @@ All the functions here can be called by anyone, and will then be executed by the
 
 `applyCUBCondition(condition, entity) , removeCUBCondition(condition, entity)` uses Combat Utility Belt to apply/remove the specified condition.  `condition` is the name of the condition (as a string), `entity` is the Entity (i.e. Token or Actor) to apply/remove the condition to/from.  This will return `false` if CUB is not active in the world (and handling that is your problem!)
 
-Other than as stated above, these functions do not provide return values, so may not be a direct substitute for the equivalent Foundry API functions in all cases.
+All functions are async, and return the value of their equivalent GM side function if successful.
 
 ## Contributing
 
