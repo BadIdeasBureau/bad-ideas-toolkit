@@ -1,12 +1,13 @@
 {
-  "name": "module",
-  "title": "New Module",
-  "description": "",
+  "name": "bad-ideas-toolkit",
+  "title": "Bad Ideas Toolkit",
+  "description": "A (high risk) toolkit of features for automation using macros",
   "version": "This is auto replaced",
-  "library": "false",
+  "library": "true",
   "manifestPlusVersion": "1.0.0",
   "minimumCoreVersion": "0.7.5",
   "compatibleCoreVersion": "0.7.9",
+  "author": "BadIdeasBureau",
   "authors": [
     {
       "name": "BadIdeasBureau",

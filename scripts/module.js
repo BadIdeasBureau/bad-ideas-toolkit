@@ -156,7 +156,7 @@ const handlers = {
         const entity = await api.entityFromUuid(data.content.uuid);
         const retVal = {}
         retVal.result = await game.cub.addCondition(condition, entity)
-        
+        returnBridge(retVal, data)
     },
 
     async removeCUBConditionHandler(data){
@@ -165,6 +165,7 @@ const handlers = {
         const entity = await api.entityFromUuid(data.content.uuid);
         const retVal = {}
         retVal.result = await game.cub.removeCondition(condition, entity)
+        returnBridge(retVal, data)
     },
 
     async entityGetFlagHandler(data){
@@ -172,6 +173,7 @@ const handlers = {
         const entity = await api.entityFromUuid(data.content.uuid);
         const retVal = {}
         retVal.result = await entity.getFlag(data.content.scope, data.content.flag)
+        returnBridge(retVal, data)
     },
 
     async entitySetFlagHandler(data){
@@ -179,6 +181,7 @@ const handlers = {
         const entity = await api.entityFromUuid(data.content.uuid);
         const retVal = {}
         retVal.result = await entity.setFlag(data.content.scope, data.content.flag, data.content.value)
+        returnBridge(retVal, data)
     },
 
     async entityUpdateHandler(data){
@@ -186,6 +189,7 @@ const handlers = {
         const entity = await api.entityFromUuid(data.content.uuid);
         const retVal = {}
         retVal.result = await entity.update(data.content.newData, data.content.options)
+        returnBridge(retVal, data)
     },
 
     async entityDeleteHandler(data){
@@ -193,6 +197,7 @@ const handlers = {
         const entity = await api.entityFromUuid(data.content.uuid);
         const retVal = {}
         retVal.result = await entity.delete(data.content.options)
+        returnBridge(retVal, data)
     }
 
 }
