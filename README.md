@@ -41,13 +41,15 @@ Pull reqeusts are also welcome - in general, when making something for use playe
 ```js
 api = {
     async doThing(entity, arg1, arg2){
-        const data = {uuid: entity.uuid, arg1, arg2}
+        let uuid = getExtendedUuid(entity)
+        const data = {uuid, arg1, arg2}
         return handlerBridge(data, "doThing")
     }
 }
 
 handlers = {
     async doThingHandler(data){
+        if(!api.isMainGM()) return;
         const entity = await api.entityFromUuid(data.uuid);
         const retVal = {}
         retVal.result = await entity.thing(data.arg1, data.arg2) //or
@@ -57,10 +59,8 @@ handlers = {
 }
 ```
 
-`retVal` should be an object with `retVal.result` equal to the desired return value, and `retval.error` only existing if an error is thrown.
+`retVal` should be an object with `retVal.result` equal to the desired return value, and `retval.error` only existing if an error is thrown (and equal to the error that should be thrown).  Any Entities returned will be converted to UUIDs before being passed over, and then converted back on the other end.  Internally, the module uses an extended UUID format which can handle active effects, token.actor, and related things.
 
 Functions which just run playerside only need to be within the api object.  Helper functions which run playerside but aren't intended to be publicly usable should be added outside of either object (e.g. where handlerBridge() is).  The `functionName` argument for `handlerBridge(data, functionName)` must match up with the name of the handler function (i.e. so the handler is called functionNameHandler).  It doesn't need to match up with the name of the playerside function, but there should be a good reason for the mismatch if you're doing this (e.g. to use the same handler for two different base functions)
 
-Use of Entity.uuid before passing things into the handlerBridge, and then decoding them with `entity = await api.entityFromUuid(uuid)` is encouraged, since this reduces the amount of data going over the socket, and reduces the potential for errors. 
-
-
+Use of getExtendedUuid(entity) before passing things into the handlerBridge, and then decoding them with `entity = await api.entityFromUuid(uuid)` is encouraged, since this reduces the amount of data going over the socket, and reduces the potential for errors.  If you're getting "stack limit exceeded errors", you're trying to send too much.
