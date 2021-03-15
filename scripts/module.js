@@ -1,13 +1,15 @@
 Hooks.once('init', async function() {
-    game.socket.on(`module.bad-ideas-toolkit`, (data) => {
-        if(data.operation = "response"){
+    game.socket.on(`module.bad-ideas-toolkit`, async (data) => {
+        if(data.operation === "return"){
             const resolve = _requestResolvers[data.randomID];
             if (resolve){
                 delete _requestResolvers[data.randomID];
+                if(data.retVal.uuid) data.retVal.result = await api.entityFromUuid(data.retVal.result) //recompose from UUID if it was minified down to it
                 resolve(data.retVal)
             }
         } else {
-            handlers[`${functionName}handler`](data);
+            const handlerFunction = data.operation+"Handler"
+            handlers[handlerFunction](data);
         }
     });
     game.modules.get("bad-ideas-toolkit").api = api
@@ -65,7 +67,7 @@ const api = {
         while (index<sections.length){
             index+=2;
             tempUuid = `${tempUuid}.${sections[index-2]}.${sections[index-1]}`
-            data = await fromUuid(tempUuid);
+            let data = await fromUuid(tempUuid);
             switch (sections[index-2]){
                 case "Item":
                     entity = Item.createOwned(data,entity);
@@ -114,7 +116,8 @@ async function handlerBridge(content, functionName){  //if the user is the main 
         const randomID = getUniqueID();
         _requestResolvers[randomID] = resolve;
         if (api.isMainGM()){
-            handlers[`${functionName}Handler`]({content, randomID, user: game.user.id})
+            const handlerFunctionName = `${functionName}Handler`
+            handlers[handlerFunctionName]({content, randomID, user: game.user.id})
         }else{ 
             game.socket.emit('module.bad-ideas-toolkit', {
                 operation: functionName,
@@ -136,12 +139,19 @@ async function handlerBridge(content, functionName){  //if the user is the main 
 }
 
 function returnBridge(retVal, data){
+    console.log(retVal)
+    if (retVal.result.uuid){ //if it has one, decompose it to its UUID
+        retVal.result = retVal.result.uuid;
+        retVal.uuid = true
+    }
+    console.log(retVal)
     if (data.user === game.user.id){
         const resolve = _requestResolvers[data.randomID];
             if (resolve){
                 delete _requestResolvers[data.randomID];
                 resolve(retVal)
             }
+        return;
     }
     game.socket.emit("module.bad-ideas-toolkit", {
         operation: "return",

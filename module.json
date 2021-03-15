@@ -4,6 +4,7 @@
   "description": "A (high risk) toolkit of features for automation using macros",
   "version": "This is auto replaced",
   "library": "true",
+  "socket":true,
   "manifestPlusVersion": "1.0.0",
   "minimumCoreVersion": "0.7.5",
   "compatibleCoreVersion": "0.7.9",
