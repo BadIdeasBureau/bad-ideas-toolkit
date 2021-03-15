@@ -25,78 +25,100 @@ const api = {
 
     async applyCUBCondition(condition,entity) {
         if(!game.modules.get("combat-utility-belt")?.active) return false;
-        const content = {condition, uuid: entity.uuid};
+        let uuid = getExtendedUuid(entity);
+        const content = {condition, uuid};
         return handlerBridge(content, "applyCUBCondition")
     },
 
     async removeCUBCondition(condition,entity){
         if(!game.modules.get("combat-utility-belt")?.active) return false;
-        const content = {condition, uuid: entity.uuid};
+        let uuid = getExtendedUuid(entity);
+        const content = {condition, uuid};
         return handlerBridge(content, "removeCUBCondition")
     },
 
     async entityGetFlag(entity, scope, flag){
-        const content = {uuid: entity.uuid, scope,flag};
+        let uuid = getExtendedUuid(entity);
+        const content = {uuid, scope,flag};
         return handlerBridge(content,"entityGetFlag")
     },
 
     async entitySetFlag(entity, scope, flag, value){
-        const content = {uuid: entity.uuid, scope,flag, value};
+        let uuid = getExtendedUuid(entity);
+        const content = {uuid, scope,flag, value};
         return handlerBridge(content,"entitySetFlag")
     },
 
+    async entityUnsetFlag(entity, scope, flag){
+        let uuid = getExtendedUuid(entity);
+        const content = {uuid, scope,flag};
+        return handlerBridge(content,"entityUnsetFlag")
+    },
+
     async entityUpdate(entity, newData, options){
-        const content = {uuid: entity.uuid, newData, options};
+        let uuid = getExtendedUuid(entity);
+        const content = {uuid, newData, options};
         return handlerBridge(content,"entityUpdate")
     },
 
     async entityDelete(entity, options){
-        const content = {uuid: entity.uuid, options};
+        let uuid = getExtendedUuid(entity);
+        const content = {uuid, options};
         return handlerBridge(content,"entityDelete")
     },
 
     async entityFromUuid(uuid){ //allows recovery of the actual Entity instance from a uuid, even for embedded entities.
-        let entity = await fromUuid(uuid);
-        if (entity instanceof Entity){ //everything is nice, it's a base entity, we can just return that.
-            return entity
-        }
         const sections = uuid.split(".");
-        let tempUuid = (`${sections[0]}.${sections[1]}`)
-        entity = await fromUuid(tempUuid);
+        let type = sections[0]
+        let id = sections[1]
+        if (type === "JournalEntry") type = "journal"; //because someone had to be special, so we need to adjust this for the game lookup
+        if (type === "Compendium" || type === "Folder") return fromUuid(uuid); //it's in a compendium, not handled by me, and this seems to be the best way to find a folder!
+        let entity = game[type.toLowerCase()+"s"].get(id) //lookup in game, to avoid database call
         let index = 2;
         while (index<sections.length){
             index+=2;
-            tempUuid = `${tempUuid}.${sections[index-2]}.${sections[index-1]}`
-            let data = await fromUuid(tempUuid);
-            switch (sections[index-2]){
+            type = sections[index-2];
+            id = sections[index-1]
+            let data;
+            switch (type){
                 case "Item":
+                    data = entity.items.get(id)
                     entity = Item.createOwned(data,entity);
                     break;
                 case "ActiveEffect":
+                    data = entity.effects.get(id)
                     entity = new ActiveEffect(data, entity);
                     break;
                 case "Tile":
+                    data = entity.data.tiles.find(t=>t._id === id)
                     entity = new Tile(data, entity);
                     break;
                 case "Token":
+                    data = entity.data.tokens.find(t=>t._id === id)
                     entity = new Token(data, entity);
                     break;
                 case "Drawing":
+                    data = entity.data.drawings.find(t=>t._id === id)
                     entity = new Drawing(data, entity);
                     break;
                 case "MeasuredTemplate":
+                    data = entity.data.templates.find(t=>t._id === id)
                     entity = new MeasuredTemplate(data, entity);
                     break;
                 case "AmbientLight":
+                    data = entity.data.lights.find(t=>t._id === id)
                     entity = new AmbientLight(data, entity);
                     break;
                 case "AmbientSound":
+                    data = entity.data.sounds.find(t=>t._id === id)
                     entity = new AmbientSound(data, entity);
                     break;
                 case "Wall":
+                    data = entity.data.walls.find(t=>t._id === id)
                     entity = new Wall(data, entity);
                     break;
                 case "Note":
+                    data = entity.data.notes.find(t=>t._id === id)
                     entity = new Note(data, entity);
                     break;
                 default:
@@ -107,6 +129,24 @@ const api = {
     }
 }
 
+function getExtendedUuid(entity){// gets a uuid, with extensions for token.actor, and for active effects.  Private for now, could add it into the API if others want this public.
+    if(entity instanceof ActiveEffect){ //active effects don't normally have an UUID, let's give them one
+        let ownID = "ActiveEffect."+entity.id;
+        let parentID = getExtendedUuid(entity.parent);
+        return parentID+"."+ownID
+    }
+    if(entity instanceof Item && entity.isOwned && entity.options.actor.isToken){ //owned items might hit the issue below with token actors
+        let ownID = "Item." + entity.id;
+        let parentID = getExtendedUuid(entity.options.actor) //recurse here, to get the extended UUID for the actor
+        return parentID+"."+ownID
+    }
+    if(entity instanceof Actor && entity.isToken){ //uuid for a token actor would normally resolve into the uuid of the actor in the sidebar
+        let ownID = entity.uuid;
+        let parentID = entity.token.uuid;
+        return parentID+"."+ownID
+    }
+    return entity.uuid
+}
 function getUniqueID(){
     return `${game.user.id}-${Date.now()}-${randomID()}`
 }
@@ -193,6 +233,14 @@ const handlers = {
         const entity = await api.entityFromUuid(data.content.uuid);
         const retVal = {}
         retVal.result = await entity.setFlag(data.content.scope, data.content.flag, data.content.value)
+        returnBridge(retVal, data)
+    },
+
+    async entityUnsetFlagHandler(data){
+        if(!api.isMainGM()) return;
+        const entity = await api.entityFromUuid(data.content.uuid);
+        const retVal = {}
+        retVal.result = await entity.unsetFlag(data.content.scope, data.content.flag)
         returnBridge(retVal, data)
     },
 
