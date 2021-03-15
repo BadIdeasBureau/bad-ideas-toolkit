@@ -180,8 +180,8 @@ async function handlerBridge(content, functionName){  //if the user is the main 
 
 function returnBridge(retVal, data){
     console.log(retVal)
-    if (retVal.result.uuid){ //if it has one, decompose it to its UUID
-        retVal.result = retVal.result.uuid;
+    if (retVal.result.uuid || (retVal.result instanceof ActiveEffect && retVal.result.parent)){ //if it has one, or is an active effect, decompose it to its UUID
+        retVal.result = getExtendedUuid(retVal.result.uuid);
         retVal.uuid = true
     }
     console.log(retVal)
