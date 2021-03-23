@@ -67,6 +67,12 @@ const api = {
         return handlerBridge(content,"entityDelete")
     },
 
+    async entityCreateEmbeddedEntity(entity, embedType, embedData, options){
+        let uuid = getExtendedUuid(entity);
+        const content = {uuid, embedType, embedData, options};
+        return handlerBridge(content,"entityCreateEmbeddedEntity")
+    },
+
     async entityFromUuid(uuid){ //allows recovery of the actual Entity instance from a uuid, even for embedded entities.
         const sections = uuid.split(".");
         let type = sections[0]
@@ -258,6 +264,13 @@ const handlers = {
         const retVal = {}
         retVal.result = await entity.delete(data.content.options)
         returnBridge(retVal, data)
-    }
+    },
 
+    async entityCreateEmbeddedEntityHandler(data){
+        if(!api.isMainGM()) return;
+        const entity = await api.entityFromUuid(data.content.uuid);
+        const retVal = {}
+        retVal.result = await entity.createEmbeddedEntity(data.content.embedType, data.content.embedData, data.content.options)
+        returnBridge(retVal, data)
+    }
 }
