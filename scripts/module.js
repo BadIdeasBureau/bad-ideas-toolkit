@@ -78,6 +78,21 @@ const api = {
         const content = {uuid, embedType, embedData, options};
         return handlerBridge(content,"entityDeleteEmbeddedEntity")
     },
+    /* work in progress - need a solution to pass the dialog back across the socket and pick it up properly.
+    async dialogToUser(userID, data, options){
+        const buttonKeys = Object.keys(data.buttons)
+        const callbacks = {};
+        buttonKeys.forEach(k =>{
+            let call = data.buttons.[k].callback;
+            if(call) {
+                callbacks[k] = duplicate(call);
+                call = html =>
+            }
+
+        })
+        const content = {userID,data,options}
+        return handlerBridge(content,"dialogToUser")
+    },*/
     
     async entityFromUuid(uuid){ //allows recovery of the actual Entity instance from a uuid, even for embedded entities.
         const sections = uuid.split(".");
@@ -167,17 +182,18 @@ async function handlerBridge(content, functionName){  //if the user is the main 
     const methodResponse = await new Promise((resolve, reject) => {
         const randomID = getUniqueID();
         _requestResolvers[randomID] = resolve;
-        if (api.isMainGM()){
+        const user = game.user.id;
+        if ((!content.userID && api.isMainGM() ) || content.userID === user){ //if content doesn't specify a user, this is to be run by the GM.  If it does, it's to be run by the user specified
             const handlerFunctionName = `${functionName}Handler`
-            handlers[handlerFunctionName]({content, randomID, user: game.user.id})
+            handlers[handlerFunctionName]({content, randomID, user})
         }else{ 
             game.socket.emit('module.bad-ideas-toolkit', {
                 operation: functionName,
-                user: game.user.id,
+                user,
                 content,
                 randomID
             })
-        };
+        }
         setTimeout(() =>{
             delete _requestResolvers[randomID];
             reject(new Error ("timed out waiting for GM execution"));
