@@ -96,7 +96,7 @@ const api = {
     
     async entityFromUuid(uuid){ //allows recovery of the actual Entity instance from a uuid, even for embedded entities.
         const sections = uuid.split(".");
-        let type = sections[0]
+        let type = sections[0] //could do type=array.shift() instead, to pop off and grab the first element (then same for id).  Would remove the need for the "index" variable, but would also reduce readability.
         let id = sections[1]
         if (type === "JournalEntry") type = "journal"; //because someone had to be special, so we need to adjust this for the game lookup
         if (type === "Compendium" || type === "Folder") return fromUuid(uuid); //it's in a compendium, not handled by me, and this seems to be the best way to find a folder!
@@ -148,6 +148,11 @@ const api = {
                     data = entity.data.notes.find(t=>t._id === id)
                     entity = new Note(data, entity);
                     break;
+                case "Actor":
+                    if (entity instanceof Token) {
+                        entity = entity.actor; //parent should always be a token here, but if it's not then this will default down and error out
+                        break;
+                    }
                 default:
                     throw "Error: Unsupported Embedded Entity Type (BadIdeas Toolkit)"
             }
