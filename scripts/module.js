@@ -1,10 +1,35 @@
+const MODULE_ID = "bad-ideas-toolkit";
+
+Hooks.once('devModeReady', ({ registerPackageDebugFlag }) => {
+    registerPackageDebugFlag(MODULE_ID);
+});
+
+
+//logging
+function log(...args) {
+    try {
+        const isDebugging = window.DEV?.getPackageDebugValue(MODULE_ID);
+
+        if (isDebugging) {
+            console.log(MODULE_ID, '|', ...args);
+        }
+    } catch (e) {}
+}
+
 Hooks.once('init', async function() {
-    game.socket.on(`module.bad-ideas-toolkit`, async (data) => {
+    //socket registration
+    game.socket.on(`module.${MODULE_ID}`, async (data) => {
+        log("Received data over socket:", data)
         if(data.operation === "return"){
+            if(data.retVal.isUuid){
+                data.retVal.result = fromEUuid(data.retVal.result)
+            }
+            if(data.retVal.isUuidArray){
+                data.retVal.result = data.retVal.result.map(fromEUuid)
+            }
             const resolve = _requestResolvers[data.randomID];
             if (resolve){
                 delete _requestResolvers[data.randomID];
-                if(data.retVal.uuid) data.retVal.result = await api.entityFromUuid(data.retVal.result) //recompose from UUID if it was minified down to it
                 resolve(data.retVal)
             }
         } else {
@@ -12,9 +37,18 @@ Hooks.once('init', async function() {
             handlers[handlerFunction](data);
         }
     });
-    game.modules.get("bad-ideas-toolkit").api = api
-    if(!globalThis.badIdeas) {globalThis.badIdeas = api} //register convenience object if it's not already in use
+
+    //API registration
+    game.modules.get(MODULE_ID).api = api
+    if(!globalThis.badIdeas) {
+        globalThis.badIdeas = api
+        log("badIdeas convenience object registered successfully")
+    } else {
+        ui.notifications.warn(`badIdeas convenience object not registerable.  Bad Ideas Toolkit API is still accessible via game.modules.get(${MODULE_ID}).api`)
+    }//register convenience object if it's not already in use
 });
+
+
 
 const _requestResolvers = {};
 
@@ -23,167 +57,137 @@ const api = {
         return game.user === game.users.find((u) => u.isGM && u.active)
     },
 
+    // old API, kept for compatibility and not needing to rewrite a million macros
     async applyCUBCondition(condition,entity) {
         if(!game.modules.get("combat-utility-belt")?.active) return false;
-        let uuid = getExtendedUuid(entity);
-        const content = {condition, uuid};
+        let document = getDocument(entity);
+        const content = {condition, document};
         return handlerBridge(content, "applyCUBCondition")
     },
 
     async removeCUBCondition(condition,entity){
         if(!game.modules.get("combat-utility-belt")?.active) return false;
-        let uuid = getExtendedUuid(entity);
-        const content = {condition, uuid};
+        let document = getDocument(entity);
+        const content = {condition, document};
         return handlerBridge(content, "removeCUBCondition")
     },
 
     async entityGetFlag(entity, scope, flag){
-        let uuid = getExtendedUuid(entity);
-        const content = {uuid, scope,flag};
-        return handlerBridge(content,"entityGetFlag")
+        let document = getDocument(entity);
+        return this.documentGetFlag(document, scope, flag)
     },
 
     async entitySetFlag(entity, scope, flag, value){
-        let uuid = getExtendedUuid(entity);
-        const content = {uuid, scope,flag, value};
-        return handlerBridge(content,"entitySetFlag")
+        let document = getDocument(entity);
+        return this.documentSetFlag(document, scope, flag, value)
     },
 
     async entityUnsetFlag(entity, scope, flag){
-        let uuid = getExtendedUuid(entity);
-        const content = {uuid, scope,flag};
-        return handlerBridge(content,"entityUnsetFlag")
+        let document = getDocument(entity);
+        return this.documentUnsetFlag(document, scope, flag)
     },
 
     async entityUpdate(entity, newData, options){
-        let uuid = getExtendedUuid(entity);
-        const content = {uuid, newData, options};
-        return handlerBridge(content,"entityUpdate")
+        let document = getDocument(entity);
+        return this.documentUpdate(document, newData, options)
     },
 
     async entityDelete(entity, options){
-        let uuid = getExtendedUuid(entity);
-        const content = {uuid, options};
-        return handlerBridge(content,"entityDelete")
+        let document = getDocument(entity);
+        return this.documentDelete(document, options)
     },
 
     async entityCreateEmbeddedEntity(entity, embedType, embedData, options){
-        let uuid = getExtendedUuid(entity);
-        const content = {uuid, embedType, embedData, options};
-        return handlerBridge(content,"entityCreateEmbeddedEntity")
+        let document = getDocument(entity);
+        if(!Array.isArray(embedData)) embedData = [embedData]
+        return this.documentCreateEmbeddedDocuments(document, embedType, embedData, options)
     },
 
-    async entityDeleteEmbeddedEntity(entity, embedType, embedData, options){
-        let uuid = getExtendedUuid(entity);
-        const content = {uuid, embedType, embedData, options};
-        return handlerBridge(content,"entityDeleteEmbeddedEntity")
+    async entityDeleteEmbeddedEntity(entity, embedType, embedIds, options){
+        let document = getDocument(entity);
+        if(!Array.isArray(embedIds)) embedIds = [embedIds]
+        return this.documentDeleteEmbeddedDocuments(document, embedType, embedIds, options)
     },
-    /* work in progress - need a solution to pass the dialog back across the socket and pick it up properly.
-    async dialogToUser(userID, data, options){
-        const buttonKeys = Object.keys(data.buttons)
-        const callbacks = {};
-        buttonKeys.forEach(k =>{
-            let call = data.buttons.[k].callback;
-            if(call) {
-                callbacks[k] = duplicate(call);
-                call = html =>
-            }
 
-        })
-        const content = {userID,data,options}
-        return handlerBridge(content,"dialogToUser")
-    },*/
-    
-    async entityFromUuid(uuid){ //allows recovery of the actual Entity instance from a uuid, even for embedded entities.
-        const sections = uuid.split(".");
-        let type = sections[0] //could do type=array.shift() instead, to pop off and grab the first element (then same for id).  Would remove the need for the "index" variable, but would also reduce readability.
-        let id = sections[1]
-        if (type === "JournalEntry") type = "journal"; //because someone had to be special, so we need to adjust this for the game lookup
-        if (type === "Compendium" || type === "Folder") return fromUuid(uuid); //it's in a compendium, not handled by me, and this seems to be the best way to find a folder!
-        let entity = game[type.toLowerCase()+"s"].get(id) //lookup in game, to avoid database call
-        let index = 2;
-        while (index<sections.length){
-            index+=2;
-            type = sections[index-2];
-            id = sections[index-1]
-            let data;
-            switch (type){
-                case "Item":
-                    data = entity.items.get(id)
-                    entity = Item.createOwned(data,entity);
-                    break;
-                case "ActiveEffect":
-                    data = entity.effects.get(id)
-                    entity = new ActiveEffect(data, entity);
-                    break;
-                case "Tile":
-                    data = entity.data.tiles.find(t=>t._id === id)
-                    entity = new Tile(data, entity);
-                    break;
-                case "Token":
-                    data = entity.data.tokens.find(t=>t._id === id)
-                    entity = new Token(data, entity);
-                    break;
-                case "Drawing":
-                    data = entity.data.drawings.find(t=>t._id === id)
-                    entity = new Drawing(data, entity);
-                    break;
-                case "MeasuredTemplate":
-                    data = entity.data.templates.find(t=>t._id === id)
-                    entity = new MeasuredTemplate(data, entity);
-                    break;
-                case "AmbientLight":
-                    data = entity.data.lights.find(t=>t._id === id)
-                    entity = new AmbientLight(data, entity);
-                    break;
-                case "AmbientSound":
-                    data = entity.data.sounds.find(t=>t._id === id)
-                    entity = new AmbientSound(data, entity);
-                    break;
-                case "Wall":
-                    data = entity.data.walls.find(t=>t._id === id)
-                    entity = new Wall(data, entity);
-                    break;
-                case "Note":
-                    data = entity.data.notes.find(t=>t._id === id)
-                    entity = new Note(data, entity);
-                    break;
-                case "Actor":
-                    if (entity instanceof Token) {
-                        entity = entity.actor; //parent should always be a token here, but if it's not then this will default down and error out
-                        break;
-                    }
-                default:
-                    throw "Error: Unsupported Embedded Entity Type (BadIdeas Toolkit)"
-            }
-        }
-        return entity;
-    }
+    //0.8 API.  Mostly just functions which the old ones will pass into (except for handling the embedded changes), but using the new naming scheme
+    async documentGetFlag(document, scope, flag){
+        const content = {document, scope,flag};
+        return handlerBridge(content,"documentGetFlag")
+    },
+
+    async documentSetFlag(document, scope, flag, value){
+        const content = {document, scope,flag, value};
+        return handlerBridge(content,"documentSetFlag")
+    },
+
+    async documentUnsetFlag(document, scope, flag){
+        const content = {document, scope,flag};
+        return handlerBridge(content,"documentUnsetFlag")
+    },
+
+    async documentUpdate(document, newData, options){
+        const content = {document, newData, options};
+        return handlerBridge(content,"documentUpdate")
+    },
+
+    async documentDelete(document, options){
+        const content = {document, options};
+        return handlerBridge(content,"documentDelete")
+    },
+
+    async documentCreateEmbeddedDocuments(document, embedType, embedData, options){
+        const content = {document, embedType, embedData, options};
+        return handlerBridge(content,"documentCreateEmbeddedDocuments")
+    },
+
+    async documentDeleteEmbeddedDocuments(document, embedType, embedIds, options){
+        const content = {document, embedType, embedIds, options};
+        return handlerBridge(content,"documentDeleteEmbeddedDocuments")
+    },
+
+
+//entityfromUuid removed due to document changes.
 }
 
-function getExtendedUuid(entity){// gets a uuid, with extensions for token.actor, and for active effects.  Private for now, could add it into the API if others want this public.
-    if(entity instanceof ActiveEffect){ //active effects don't normally have an UUID, let's give them one
-        let ownID = "ActiveEffect."+entity.id;
-        let parentID = getExtendedUuid(entity.parent);
-        return parentID+"."+ownID
+function getDocument(entity, skipCheck){// gets the document if it was passed a PO, otherwise just returns the argument.  Will check if the result is a document unless passed "true"
+    let document;
+    if(entity instanceof PlaceableObject){
+         document = entity.document
+    } else {
+        document = entity
     }
-    if(entity instanceof Item && entity.isOwned && entity.options.actor.isToken){ //owned items might hit the issue below with token actors
-        let ownID = "Item." + entity.id;
-        let parentID = getExtendedUuid(entity.options.actor) //recurse here, to get the extended UUID for the actor
-        return parentID+"."+ownID
-    }
-    if(entity instanceof Actor && entity.isToken){ //uuid for a token actor would normally resolve into the uuid of the actor in the sidebar
-        let ownID = entity.uuid;
-        let parentID = entity.token.uuid;
-        return parentID+"."+ownID
-    }
-    return entity.uuid
+    if(document instanceof foundry.abstract.Document || skipCheck){
+        return document
+    } else throw new Error(`${MODULE_ID}| Object provided was not a Document or reducible to one.`)
 }
+
 function getUniqueID(){
     return `${game.user.id}-${Date.now()}-${randomID()}`
 }
 
+function extendedUuid(document){
+    let euuid = document.uuid
+    if(document.documentName === "Actor" && !document.uuid.includes("Actor")){
+        euuid += ".Actor"
+    }
+    return euuid
+}
+
+async function fromEUuid(euuid){
+    let parts = euuid?.split(".");
+    let isActor = false;
+    if(parts?.pop()==="Actor"){ //remove the last element of the array, and check if it's an Actor, and if so reconstruct the euuid without it
+        euuid = parts.join(".")
+        isActor = true
+    }
+    let document = await fromUuid(euuid)
+    if(isActor) document = document.actor
+
+    return document
+}
+
 async function handlerBridge(content, functionName){  //if the user is the main GM, executes the handler directly.  otherwise, emits an instruction to execute over a socket.
+    log("handlerBridge called with arguments", ...arguments)
     const methodResponse = await new Promise((resolve, reject) => {
         const randomID = getUniqueID();
         _requestResolvers[randomID] = resolve;
@@ -191,8 +195,9 @@ async function handlerBridge(content, functionName){  //if the user is the main 
         if ((!content.userID && api.isMainGM() ) || content.userID === user){ //if content doesn't specify a user, this is to be run by the GM.  If it does, it's to be run by the user specified
             const handlerFunctionName = `${functionName}Handler`
             handlers[handlerFunctionName]({content, randomID, user})
-        }else{ 
-            game.socket.emit('module.bad-ideas-toolkit', {
+        }else{
+            content.document = extendedUuid(content.document)
+            game.socket.emit(`module.${MODULE_ID}`, {
                 operation: functionName,
                 user,
                 content,
@@ -212,12 +217,7 @@ async function handlerBridge(content, functionName){  //if the user is the main 
 }
 
 function returnBridge(retVal, data){
-    console.log(retVal)
-    if (retVal.result.uuid || (retVal.result instanceof ActiveEffect && retVal.result.parent)){ //if it has one, or is an active effect, decompose it to its UUID
-        retVal.result = getExtendedUuid(retVal.result.uuid);
-        retVal.uuid = true
-    }
-    console.log(retVal)
+    log("return bridge called with arguments", ...arguments)
     if (data.user === game.user.id){
         const resolve = _requestResolvers[data.randomID];
             if (resolve){
@@ -226,7 +226,14 @@ function returnBridge(retVal, data){
             }
         return;
     }
-    game.socket.emit("module.bad-ideas-toolkit", {
+    if(retVal.result instanceof foundry.abstract.Document) { //if it's a document or an array of documents, decompose it to its eUUIDs
+        retVal.result = extendedUuid(retVal.result);
+        retVal.isUuid = true
+    } else if (Array.isArray(retVal.result) && retVal.result.every( (res) => res instanceof foundry.abstract.Document)){ //if something ends up returning an array of some documents and some notdocuments, it'll get the return value wrong in the end, but that shouldn't happen.
+        retVal.isUuidArray = true
+        retVal.result = retVal.result.map(extendedUuid)
+    }
+    game.socket.emit(`module.${MODULE_ID}`, {
         operation: "return",
         user: game.user.id,
         retVal,
@@ -238,74 +245,74 @@ const handlers = {
     async applyCUBConditionHandler(data){
         if(!api.isMainGM()) return;
         const condition = data.content.condition;
-        const entity = await api.entityFromUuid(data.content.uuid);
+        const document = await fromEUuid(data.content.document)
         const retVal = {}
-        retVal.result = await game.cub.addCondition(condition, entity)
+        retVal.result = await game.cub.addCondition(condition, document)
         returnBridge(retVal, data)
     },
 
     async removeCUBConditionHandler(data){
         if(!api.isMainGM()) return;
         const condition = data.content.condition;
-        const entity = await api.entityFromUuid(data.content.uuid);
+        const document = await fromEUuid(data.content.document)
         const retVal = {}
-        retVal.result = await game.cub.removeCondition(condition, entity)
+        retVal.result = await game.cub.removeCondition(condition, document)
         returnBridge(retVal, data)
     },
 
-    async entityGetFlagHandler(data){
+    async documentGetFlagHandler(data){
         if(!api.isMainGM()) return;
-        const entity = await api.entityFromUuid(data.content.uuid);
+        const document = await fromEUuid(data.content.document)
         const retVal = {}
-        retVal.result = await entity.getFlag(data.content.scope, data.content.flag)
+        retVal.result = await document.getFlag(data.content.scope, data.content.flag)
         returnBridge(retVal, data)
     },
 
-    async entitySetFlagHandler(data){
+    async documentSetFlagHandler(data){
         if(!api.isMainGM()) return;
-        const entity = await api.entityFromUuid(data.content.uuid);
+        const document = await fromEUuid(data.content.document)
         const retVal = {}
-        retVal.result = await entity.setFlag(data.content.scope, data.content.flag, data.content.value)
+        retVal.result = await document.setFlag(data.content.scope, data.content.flag, data.content.value)
         returnBridge(retVal, data)
     },
 
-    async entityUnsetFlagHandler(data){
+    async documentUnsetFlagHandler(data){
         if(!api.isMainGM()) return;
-        const entity = await api.entityFromUuid(data.content.uuid);
+        const document = await fromEUuid(data.content.document)
         const retVal = {}
-        retVal.result = await entity.unsetFlag(data.content.scope, data.content.flag)
+        retVal.result = await document.unsetFlag(data.content.scope, data.content.flag)
         returnBridge(retVal, data)
     },
 
-    async entityUpdateHandler(data){
+    async documentUpdateHandler(data){
         if(!api.isMainGM()) return;
-        const entity = await api.entityFromUuid(data.content.uuid);
+        const document = await fromEUuid(data.content.document)
         const retVal = {}
-        retVal.result = await entity.update(data.content.newData, data.content.options)
+        retVal.result = await document.update(data.content.newData, data.content.options)
         returnBridge(retVal, data)
     },
 
-    async entityDeleteHandler(data){
+    async documentDeleteHandler(data){
         if(!api.isMainGM()) return;
-        const entity = await api.entityFromUuid(data.content.uuid);
+        const document = await fromEUuid(data.content.document)
         const retVal = {}
-        retVal.result = await entity.delete(data.content.options)
+        retVal.result = await document.delete(data.content.options)
         returnBridge(retVal, data)
     },
 
-    async entityCreateEmbeddedEntityHandler(data){
+    async documentCreateEmbeddedDocumentsHandler(data){
         if(!api.isMainGM()) return;
-        const entity = await api.entityFromUuid(data.content.uuid);
+        const document = await fromEUuid(data.content.document)
         const retVal = {}
-        retVal.result = await entity.createEmbeddedEntity(data.content.embedType, data.content.embedData, data.content.options)
+        retVal.result = await document.createEmbeddedDocuments(data.content.embedType, data.content.embedData, data.content.options)
         returnBridge(retVal, data)
     },
 
-    async entityDeleteEmbeddedEntityHandler(data){
+    async documentDeleteEmbeddedDocumentsHandler(data){
         if(!api.isMainGM()) return;
-        const entity = await api.entityFromUuid(data.content.uuid);
+        const document = await fromEUuid(data.content.document)
         const retVal = {}
-        retVal.result = await entity.deleteEmbeddedEntity(data.content.embedType, data.content.embedData, data.content.options)
+        retVal.result = await document.deleteEmbeddedDocuments(data.content.embedType, data.content.embedIds, data.content.options)
         returnBridge(retVal, data)
     }
 }
