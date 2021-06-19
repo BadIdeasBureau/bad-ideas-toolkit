@@ -192,11 +192,11 @@ async function handlerBridge(content, functionName){  //if the user is the main 
         const randomID = getUniqueID();
         _requestResolvers[randomID] = resolve;
         const user = game.user.id;
+        content.document = extendedUuid(content.document)
         if ((!content.userID && api.isMainGM() ) || content.userID === user){ //if content doesn't specify a user, this is to be run by the GM.  If it does, it's to be run by the user specified
             const handlerFunctionName = `${functionName}Handler`
             handlers[handlerFunctionName]({content, randomID, user})
         }else{
-            content.document = extendedUuid(content.document)
             game.socket.emit(`module.${MODULE_ID}`, {
                 operation: functionName,
                 user,
