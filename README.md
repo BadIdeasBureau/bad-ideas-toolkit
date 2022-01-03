@@ -1,5 +1,9 @@
 # Bad Ideas Toolkit
 
+## No Longer Maintained.
+
+I'm pulling back from this module.  Warpgate (https://github.com/trioderegion/warpgate) has a mutation system that can be used to do most of the sensible things this module could be used for, in a way which is less detrimental to the permissions system for Foundry.  If anyone wants to fork this and take over maintenance, then go ahead.
+
 ## WARNING:  This module contains functions which will allow tech-savvy players to completely bypass permissions on all Document types.  If you don't trust your players, don't install this.
 
 This is a library module, it does nothing on its own, but provides several functions for use in macros or by other modules.
